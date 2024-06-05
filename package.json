@@ -1,14 +1,16 @@
 {
-  "name": "markov-flexible",
-  "version": "0.0.1",
-  "description": "Flexible Markov Chains strings using a simple graph data structure",
+  "name": "word-chains",
+  "version": "0.0.4",
+  "description": "Flexible Markov-like Chains strings using a simple graph data structure",
   "main": "src/Markov.js",
   "scripts": {
-    "test": "jest",
-    "example": "node ./test/example.js"
+    "test": "npx jest",
+    "example": "node ./test/example.js",
+    "lint": "eslint"
   },
   "keywords": [
     "markov",
+    "word",
     "chain",
     "chains",
     "graph"
@@ -18,8 +20,25 @@
   "dependencies": {
     "wikipedia": "^1.1.9"
   },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "jsx"
+    ],
+    "moduleDirectories": [
+      "node_modules",
+      "src",
+      "test"
+    ]
+  },
   "devDependencies": {
     "chance": "^1.1.9",
-    "jest": "^29.4.3"
+    "eslint": "^8.45.0",
+    "eslint-config-standard": "^17.1.0",
+    "eslint-plugin-import": "^2.27.5",
+    "eslint-plugin-jest": "^27.2.3",
+    "eslint-plugin-n": "^16.0.1",
+    "eslint-plugin-promise": "^6.1.1",
+    "jest": "^29.7.0"
   }
 }

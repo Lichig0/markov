@@ -7,12 +7,12 @@ const readline = require('readline').createInterface({
 });
 
 const chance = new Chance();
-const trimmer = new RegExp('==.*==|\n|^$','g');
+const trimmer = new RegExp('==.*==|\n|^$', 'g');
 const punctuation = new RegExp('[^.!?]*[.!?]', 'g');
 
 const getwiki = async () => {
   try {
-    const events = Object.values(await wiki.onThisDay({type: 'events'}))[0];
+    const events = Object.values(await wiki.onThisDay({ type: 'events' }))[0];
     // console.log(events);
     const dayAllContent = [];
     // const pageSummary = chance.pickone(Object.values(events)[0].pages);
@@ -25,9 +25,9 @@ const getwiki = async () => {
     const page = await wiki.page(pageSummary.title)
     // console.log('page', page);
     const content = await page.content();
-    console.log('Content: ',content);
+    console.log('Content: ', content);
     // console.log(dayAllContent)
-    return(content);
+    return (content);
   } catch (error) {
     console.log(error);
   }
@@ -38,53 +38,73 @@ const getRandomWiki = async () => {
     const pageSummary = await wiki.random();
     console.log('Fetched wiki article title:', pageSummary.title);
     const page = await wiki.page(pageSummary.title);
-    return page.content()
+    const content = await page.content();
+    console.log('Content: ', content);
+    return content;
   } catch (error) {
     console.error(error);
   }
 };
 
+const searchWiki = async (searchText) => {
+  return new Promise((resolve, reject) => {
+    try {
+      const contentRequests = [];
+      const pageRequests = [];
+      wiki.search(searchText).then(response => {
+        //Slice to limit requests.
+        response.results.slice(0, -6).forEach(result => {
+          pageRequests.push(wiki.page(result.title));
+        });
+        Promise.allSettled(pageRequests).then(pages => {
+          pages.forEach(page => {
+            if (page.value) {
+              contentRequests.push(page.value.content());
+            }
+          })
+          Promise.allSettled(contentRequests).then(contentArray => {
+            resolve(contentArray.map(ca => ca.value).filter(c => c !== undefined));
+          });
+        })
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+
+}
+
 const contentToArray = (wikiContent) => {
   const trimmed = wikiContent.split(trimmer).filter(blocks => blocks !== '');
-  const sentences = trimmed.flatMap(block => block.match(punctuation));
+  const sentences = trimmed.flatMap(block => block.match(punctuation)).filter(s => s !== null);
   return sentences;
 };
 
-const mChain = new Markov.MarkovChain();
-console.log('Building chain....');
 
-getwiki().then(async content => {
-  const sentences = contentToArray(content);
-  sentences.forEach(sentence => {
-    mChain.addString(sentence, {source: 'Wiki', nsfw: true});
-  })
-  readline.question('Enter word to generate a sentence. \n>', async contains => {
-    const start = Date.now();
+const mChain = new Markov.MarkovChain(1);
+console.log('Building chain....');
+const pref = {
+  showIn: false,
+};
+
+readline.question('Search Wikipedia:\n>', input => {
+  searchWiki(input).then(async contentArray => {
+    if (pref.showIn) console.log(contentArray);
+    const sentences = [];
+    contentArray.forEach(content => {
+      sentences.push(...contentToArray(content));
+    });
+    // console.log(sentences);
+    mChain.addString(sentences, { source: 'Wiki', nsfw: true });
+    // sentences.forEach(sentence => {
+    // });
+
     const exampleFilter = (result) => {
-      /*
-      {
-        refs: {
-          'On 6 March 2020, a mass shooting occurred in Kabul, Afghanistan.': {
-            timestamp: 1678110023123,
-            source: 'Wiki',
-            nsfw: true,
-            id: 'On 6 March 2020, a mass shooting occurred in Kabul, Afghanistan.'
-          },
-          ...
-        text: 'On 6 March 2020, a ceremony to commemorate the 25th anniversary of the murder by Afghan politician Abdullah Abdullah, who escaped unharmed.'
-      }
-      */
-      console.log(Object.values(result.refs));
       return result.text.split(' ').length >= 2
     };
-    const newWiki = await mChain.generateSentence({intput: contains, filter: exampleFilter}).catch(console.error);
-    console.debug(Date.now() - start);
-    //Refs
-    // console.debug(newWiki?.data.reduce((accum, curr) => [...accum, curr.refs], []));
-    //Data
-    // console.debug(newWiki?.data.reduce((accum, curr) => [...accum, curr.metadata], []));
+
+    const newWiki = await mChain.generateSentence({ input: input, filter: exampleFilter }).catch(console.error);
     console.log(newWiki?.text);
-    console.log(newWiki);
     readline.close();
   });
 });
