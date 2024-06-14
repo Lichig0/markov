@@ -10,7 +10,7 @@ const __END__ = 1;
 const __START__ = 0;
 
 module.exports.MarkovChain = function(size = 1) {
-  this.stateSize = 1; // bigger state sizes are broken
+  this.tokenSize = size;
   this.chain = new Map();
   this.startWords = new Map();
   this.endWords = new Map();
@@ -34,6 +34,34 @@ module.exports.MarkovChain = function(size = 1) {
     pw: 0,
   });
 
+  this._transformToTokenSize = (words = []) => {
+    //Skip work if token size is 1. Assuming the incoming array is pre-split/tokenized(foreshadowing?)
+    if(this.tokenSize === 1) {
+      return words;
+    }
+
+    // Return the biggest possible token with given words is less than the token size
+    if(this.tokenSize >= words.length) {
+      return [words.join(' ')];
+    }
+    // For each element on the array, add the next <token size> elements to the current element
+    const result = words.map((word, index, words) => {
+      let list = [word];
+      // This location in the arry will end up with the rest of the list, no need to keep going.
+      // If this were a normal loop, a break could be used instead?
+      if(words.length - index < this.tokenSize) {
+        return;
+      }
+      //The actual adding to the word; "the meat" of the function
+      for(i = 1; i < this.tokenSize; i++) {
+        words[index+i] ? list.push(words[index+i]) : null;
+      }
+      return list.join(' ');
+    // slice off the rest of the array, we end with a smaller array.
+    }).slice(0, -this.tokenSize + 1);
+    return result;
+  }
+
   this.buildChain = function(words, metadata) {
     //Inject timestamp to ID metadata
     const timestamp = Date.now();
@@ -41,9 +69,12 @@ module.exports.MarkovChain = function(size = 1) {
       ...metadata,
       mid: timestamp,
     }
+
+    // Set the word size from the token size
+    words = this._transformToTokenSize(words);
     // Iterate over the words and add each word to the chain
-    for (let i = 0; i < words.length-(this.stateSize-1); i++) {
-      const word = words.slice(i,i+this.stateSize).join(" ");
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
       if(word === '' || !word) {
         // console.error(`Cannot index ${word}: `, word);
         return;
@@ -68,22 +99,22 @@ module.exports.MarkovChain = function(size = 1) {
       }
 
       // If is an end word, and isn't already indexed as an end word
-      if(i == (words.length - (this.stateSize)) && !this.endWords.has(word)) {
+      if(i == (words.length - 1) && !this.endWords.has(word)) {
         this.endWords.set(word, this.chain.get(word));
         this.chain.get(__END__).previousWords.set(word, (this.chain.get(__END__).previousWords.get(word) || 0) + 1);
         this.chain.get(__END__).pw++;
       }
 
       // If there is a next word, add it to the list of next words for the current word
-      if (i < words.length - (this.stateSize-1)) {
-        const nextWord = words.slice(i+1,i+this.stateSize+1).join(" ");
+      if (i < words.length) {
+        const nextWord = words[i+1];
         this.chain.get(word).nextWords.set(nextWord, (this.chain.get(word).nextWords.get(nextWord) || 0) + 1);
         this.chain.get(word).nw++;
       }
 
       //If there is a previous word, add it to the list of previous words for the current word
       if (i > 0) {
-        const previousWord = words.slice(i-1,i-1+this.stateSize).join(" ");
+        const previousWord = words[i-1];
         this.chain.get(word).previousWords.set(previousWord, (this.chain.get(word).previousWords.get(previousWord) || 0) + 1);
         this.chain.get(word).pw++;
       }
@@ -134,10 +165,7 @@ module.exports.MarkovChain = function(size = 1) {
     } = options;
 
     let sentence = '';
-    const inputStates = [];
-    input?.split(' ').forEach((inWord, index, array) => {
-      inputStates.push(array.slice(index, index + this.stateSize).join(" "));
-    })
+    const inputStates = this._transformToTokenSize(input?.split(' ')) ?? [];
     input = inputStates.find(inputState => this.chain.has(inputState))
 
     console.debug('Generating', `input: ${input}`)
@@ -156,7 +184,8 @@ module.exports.MarkovChain = function(size = 1) {
       ];
 
       const [startChain, endChain] = await Promise.all(chainWorkers)
-      sentence = `${startChain.sentence ? startChain.sentence.trim() : ''}${this.stateSize > 1 ? ' ' : ` ${input} `}${endChain.sentence ? endChain.sentence.trim() : ''}`;
+      // Join all the lists, then handle the overlap larger tokens will have
+      sentence = _removeOverlap(startChain.list.concat(input).concat(endChain.list)).join(' ');
       referenced = {...startChain.referenced, ...endChain.referenced};
 
       const result = {
@@ -203,6 +232,19 @@ module.exports.MarkovChain = function(size = 1) {
       endChainWorker.on('message', resolve);
       endChainWorker.on('messageerror', reject);
     });
+  }
+
+  // Remove all the overlap on the list of tokens provided
+  const _removeOverlap = (tokens) => {
+    // Iterate over all tokens, and keep only the first element except on the last token
+    // use the entirety of the last token
+    const resplit = tokens.map((token, index, tokens) => {
+      if(index === tokens.length - 1) {
+        return token;
+      }
+      return token.split(' ')[0];
+    });
+    return resplit
   }
 }
 

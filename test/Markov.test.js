@@ -149,3 +149,81 @@ test('Single word', async () => {
   outputs.push(newSentence.text);
   expect(newSentence.text).toContain('uncertainty')
 })
+
+test('Token Size of 2', async () => {
+  markovChain = new Markov.MarkovChain(2);
+  markovChain.addString(TEST_INPUT);
+  const newSentence = await markovChain.generateSentence('outcome of');
+  outputs.push(newSentence.text);
+  expect(newSentence.text).toContain('outcome of');
+})
+
+test('Token Size of 3', async () => {
+  markovChain = new Markov.MarkovChain(3);
+  markovChain.addString(TEST_INPUT);
+  const newSentence = await markovChain.generateSentence('random number generators');
+  outputs.push(newSentence.text);
+  expect(newSentence.text).toContain('random number generators')
+})
+
+test('Small data set token size 3', async () => {
+  markovChain = new Markov.MarkovChain(4)
+  markovChain.addString(exampleSentence);
+  const newSentence = await markovChain.generateSentence();
+  outputs.push(newSentence.text);
+  expect(newSentence.text).toEqual(exampleSentence);
+})
+
+test('Add sentence smaller than token size', async () => {
+  markovChain = new Markov.MarkovChain(8);
+  markovChain.addString(exampleSentence);
+  const newSentence = await markovChain.generateSentence('world');
+  outputs.push(newSentence.text);
+})
+
+test('Joinable lists of tokens', () => {
+  const answer = 'That is, if the selection process is a method of selecting items (often called units) from a population'+
+  ' where the probability distribution is known, the frequency of different outcomes over repeated events (or "trials") is'+
+  ' predictable.'
+  const A = [
+    'That is,',          'is, if',
+    'if the',            'the selection',
+    'selection process', 'process is',
+    'is a',              'a method',
+    'method of',         'of selecting',
+    'selecting items',   'items (often',
+    '(often called',     'called units)',
+    'units) from',       'from a'
+  ]
+  const B = [
+    'population where',
+    'where the',
+    'the probability',
+    'probability distribution',
+    'distribution is',
+    'is known,',
+    'known, the',
+    'the frequency',
+    'frequency of',
+    'of different',
+    'different outcomes',
+    'outcomes over',
+    'over repeated',
+    'repeated events',
+    'events (or',
+    '(or "trials")',
+    '"trials") is',
+    'is predictable.'
+  ];
+  const _removeOverlap = (tokens) => {
+    const resplit = tokens.map((token, index, tokens) => {
+      if(index === tokens.length - 1) {
+        return token;
+      }
+      return token.split(' ')[0];
+    });
+    return resplit
+  }
+  result = [..._removeOverlap(A), ..._removeOverlap(B)].join(' ');
+  expect(result).toEqual(answer);
+});

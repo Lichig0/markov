@@ -10,9 +10,20 @@ const __END__ = 1;
 const __START__ = 0;
 
 const _generateStentnce = async (corpus, options) => {
-    return new Promise((resolve, reject) => {
-        reject('NOT IMPLEMENTED', corpus, options);
-    });
+    try {
+        const [startChain, endChain] = await Promise.all(chainWorkers)
+        sentence = _removeOverlap(startChain.list.concat(input).concat(endChain.list)).join(' ');
+        referenced = {...startChain.referenced, ...endChain.referenced};
+
+        return Promise.resolve({
+            refs: referenced,
+            text: sentence,
+            string: sentence,
+        })
+    } catch (e) {
+        return Promise.reject(e);
+    }
+
 }
 
 const _findChainEnd = (corpus, word) => {
@@ -21,6 +32,7 @@ const _findChainEnd = (corpus, word) => {
     let initTime = Date.now();
     let currentWord = word;
     let sentence = '';
+    let list = [];
     const pickedWords = new Set();
 
     // Keep generating words until we reach the end of the chain
@@ -29,6 +41,8 @@ const _findChainEnd = (corpus, word) => {
             const eWords = Array.from(endWords.keys());
             currentWord = eWords[Math.floor(Math.random() * eWords.length)];
             console.warn(`Markov took too long("${sentence}"). Forcing: " ${currentWord}"`);
+            pickedWords.add(currentWord);
+            list.push(currentWord);
             sentence = ` ${currentWord}`;
             break;
         }
@@ -48,11 +62,12 @@ const _findChainEnd = (corpus, word) => {
         sentence += ' ' + nextWord.split(' ').shift();
 
         pickedWords.add(nextWord);
+        list.push(nextWord)
         // Set the current word to the next word
         currentWord = nextWord;
         referenced = { ...referenced, ...chain.get(nextWord)?.refs };
     }
-    return {sentence, referenced};
+    return {sentence, referenced, list};
 }
 
 // A helper function that chooses a random next word from the list of next words for a given word
@@ -70,6 +85,19 @@ const _chooseRandomNextWord = (corpus, word) => {
     const nextWordIndex = Math.floor(Math.random() * nextWords.size);
 
     // Choose the next word based on it's weight.
+    /*
+     * What if calculated weights like this and select for multiple paths at once?
+     * W -> a || b || c
+     * a -> t || u
+     * b -> v
+     * c -> x || y || z
+     * At state W = [a, b, c] as [10, 5, 6]
+     * a = [t, u] as [8, 2]
+     * b = [v] as [7]
+     * c = [x, y, z] as [4, 10, 3]
+     * 
+     * So that [10, 5, 6] * [[8,2],[7],[4,10,3]]
+    */
     const select = Math.random() * chain.get(word).nw + 1;
     let accumulate = chain.get(word).nw;
     let picked = Array.from(nextWords.keys())[nextWordIndex];
@@ -96,6 +124,7 @@ const _findChainStart = (corpus, word) => {
     let initTime = Date.now();
     let currentWord = word;
     let sentence = '';
+    let list = [];
     const pickedWords = new Set();
 
     while (currentWord && chain.has(currentWord) && currentWord !== 0) {
@@ -104,6 +133,8 @@ const _findChainStart = (corpus, word) => {
             const sWords = Array.from(startWords.keys());
             currentWord = sWords[Math.floor(Math.random() * sWords.length)];
             console.warn(`Markov took too long("${sentence}"). Forcing: "${currentWord} "`);
+            pickedWords.add(currentWord);
+            list.push(currentWord)
             sentence = `${currentWord} `;
             break;
         }
@@ -124,11 +155,12 @@ const _findChainStart = (corpus, word) => {
         sentence = previousWord.split(' ').pop() + ' ' + sentence;
 
         pickedWords.add(previousWord);
+        list.push(previousWord)
         // Set the current word to the previous word
         currentWord = previousWord;
         referenced = { ...referenced, ...chain.get(previousWord)?.refs };
     }
-    return {sentence, referenced};
+    return {sentence, referenced, list: list.reverse()};
 }
 
 // A helper function that chooses a random previous word form the list of previous words for a given word
@@ -159,6 +191,16 @@ const _chooseRandomPreviousWord = function (corpus, word) {
     }
     // Return the previous word picked.
     return picked;
+}
+
+const _removeOverlap = (tokens) => {
+    const resplit = tokens.map((token, index, tokens) => {
+      if(index === tokens.length - 1) {
+        return token;
+      }
+      return token.split(' ')[0];
+    });
+    return resplit
 }
 
 switch (workerData?.job) {
