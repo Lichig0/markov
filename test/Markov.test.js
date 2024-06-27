@@ -115,9 +115,9 @@ test('Reject bad strings', () => {
   markovChain.addString([['asdf'],['asdf']]);
   expect(console.warn).toBeCalledWith('Do not feed Arrays of Arrays');
   markovChain.addString(42);
-  expect(console.warn).toBeCalledWith(42, 'is a bad egg');
+  expect(console.warn).toBeCalledWith(`${42} is not typeof string`);
   markovChain.addString({});
-  expect(console.warn).toBeCalledWith({}, 'is a bad egg');
+  expect(console.warn).toBeCalledWith(`${{}} is not typeof string`);
   markovChain.addString([{}, ' ']);
   expect(markovChain.chain.size).toEqual(2);
 });
@@ -153,7 +153,7 @@ test('Single word', async () => {
 test('Token Size of 2', async () => {
   markovChain = new Markov.MarkovChain(2);
   markovChain.addString(TEST_INPUT);
-  const newSentence = await markovChain.generateSentence('outcome of');
+  const newSentence = await markovChain.generateSentence('What was the outcome of the results?');
   outputs.push(newSentence.text);
   expect(newSentence.text).toContain('outcome of');
 })
