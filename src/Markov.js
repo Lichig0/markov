@@ -24,7 +24,6 @@ module.exports.tokenTransformer = function(size = 1) {
       || sentence === ' '
       || sentence === ''
       || sentence === null) {
-        console.warn('Cannot tokenize empty string');
         return [];
     }
     let words = [];
