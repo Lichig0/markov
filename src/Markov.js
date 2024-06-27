@@ -1,4 +1,5 @@
 const { Worker } = require('node:worker_threads');
+const { tokenize } = require('./Tokenizer');
 
 const JOBS = {
   CREATE_SENTENCE: 'create_sentence',
@@ -8,33 +9,31 @@ const JOBS = {
 
 const __END__ = 1;
 const __START__ = 0;
+const __TOKENIZER_VERSION__ = 2; // 1 Is the old simple split; 2 uses a large RegEx
 
-module.exports.MarkovChain = function(size = 1) {
+module.exports.tokenTransformer = function(size = 1) {
   this.tokenSize = size;
-  this.chain = new Map();
-  this.startWords = new Map();
-  this.endWords = new Map();
-  this.corpus = {
-    chain: this.chain,
-    startWords: this.startWords,
-    endWords: this.endWords
-  };
+  this.tokenizeV1 = (sentence) => {
 
-  // Add start and end symbols to the chian
-  this.chain.set(__START__, {
-      previousWords: new Map(),
-      nextWords: new Map(),
-      nw: 0,
-      pw: 0,
-  });
-  this.chain.set(__END__, {
-    previousWords: new Map(),
-    nextWords: new Map(),
-    nw: 0,
-    pw: 0,
-  });
-
-  this._transformToTokenSize = (words = []) => {
+    if(typeof sentence !== 'string') {
+      console.warn(`${sentence} is not typeof string`);
+      return [];
+    }
+  
+    if(sentence === undefined 
+      || sentence === ' '
+      || sentence === ''
+      || sentence === null) {
+        console.warn('Cannot tokenize empty string');
+        return [];
+    }
+    let words = [];
+    
+    if (__TOKENIZER_VERSION__ === 1) {
+      words = sentence.split(' ');
+    } else if (__TOKENIZER_VERSION__ === 2) {
+      words = tokenize(sentence).map(([token]) => token);
+    }
     //Skip work if token size is 1. Assuming the incoming array is pre-split/tokenized(foreshadowing?)
     if(this.tokenSize === 1) {
       return words;
@@ -60,7 +59,36 @@ module.exports.MarkovChain = function(size = 1) {
     // slice off the rest of the array, we end with a smaller array.
     }).slice(0, -this.tokenSize + 1);
     return result;
-  }
+  };
+  this.tokenize = this.tokenizeV1;
+};
+
+module.exports.MarkovChain = function(size = 1) {
+  this._workers = new Map();
+  this.tokenizer = new exports.tokenTransformer(size);
+  this.tokenSize = size;
+  this.chain = new Map();
+  this.startWords = new Map();
+  this.endWords = new Map();
+  this.corpus = {
+    chain: this.chain,
+    startWords: this.startWords,
+    endWords: this.endWords
+  };
+
+  // Add start and end symbols to the chian
+  this.chain.set(__START__, {
+      previousWords: new Map(),
+      nextWords: new Map(),
+      nw: 0,
+      pw: 0,
+  });
+  this.chain.set(__END__, {
+    previousWords: new Map(),
+    nextWords: new Map(),
+    nw: 0,
+    pw: 0,
+  });
 
   this.buildChain = function(words, metadata) {
     //Inject timestamp to ID metadata
@@ -70,8 +98,6 @@ module.exports.MarkovChain = function(size = 1) {
       mid: timestamp,
     }
 
-    // Set the word size from the token size
-    words = this._transformToTokenSize(words);
     // Iterate over the words and add each word to the chain
     for (let i = 0; i < words.length; i++) {
       const word = words[i];
@@ -134,19 +160,11 @@ module.exports.MarkovChain = function(size = 1) {
           console.warn(`${str}(${typeof str}) is not supported`);
         }
       });
-    } else if(sentence === undefined || sentence === ' ' || sentence === '' || sentence === null) {
-      return;
-    } else if (sentence) {
-      if(!sentence.split) {
-        console.warn(sentence, 'is a bad egg');
-        return;
-      }
-      const words = sentence.trim().split(' ');
-      if(!Array.isArray(words)) {
-        console.error(words, 'is not array');
-        return;
-      }
-      this.buildChain(words, { ...data});
+    } else {
+      // Set the word size from the token size
+      // words = this.tokenizer.tokenize(words);
+      // this.buildChain(words, { ...data});
+      this.buildChain(this.tokenizer.tokenize(sentence), { ...data })
     }
   }
 
@@ -165,7 +183,7 @@ module.exports.MarkovChain = function(size = 1) {
     } = options;
 
     let sentence = '';
-    const inputStates = this._transformToTokenSize(input?.split(' ')) ?? [];
+    const inputStates = this.tokenizer.tokenize(input) ?? [];
     input = inputStates.find(inputState => this.chain.has(inputState))
 
     console.debug('Generating', `input: ${input}`)
@@ -183,7 +201,7 @@ module.exports.MarkovChain = function(size = 1) {
         _createEndChainWorker(this.corpus, input)
       ];
 
-      const [startChain, endChain] = await Promise.all(chainWorkers)
+      const [startChain, endChain] = await Promise.all(chainWorkers).catch(console.error)
       // Join all the lists, then handle the overlap larger tokens will have
       sentence = _removeOverlap(startChain.list.concat(input).concat(endChain.list)).join(' ');
       referenced = {...startChain.referenced, ...endChain.referenced};
@@ -196,11 +214,23 @@ module.exports.MarkovChain = function(size = 1) {
       // Check if the sentence passes the filter
       if(filter(result)) {
         // Resolve and return sentence
-        return(result);
+        return Promise.resolve(result);
       }
     }
-    throw(`Could not generate sentence after ${retries} attempts`);
+    return Promise.reject(`Could not generate sentence after ${retries} attempts`);
   };
+
+  this.findInputs = function(string) {
+    const tokens = this.tokenizer.tokenize(string);
+    const inputOptions = tokens.filter(input => this.corpus.chain.has(input));
+
+    if(inputOptions.length > 0) {
+      return inputOptions;
+    } else {
+      console.warn('No valid states from input', string);
+      return false; // False or [] ?
+    }
+  }
 
   const _createEndChainWorker = (corpus, word) => {
     return new Promise((resolve, reject) => {
@@ -213,14 +243,16 @@ module.exports.MarkovChain = function(size = 1) {
           }
         }
       });
+      this._workers.set(endChainWorker.threadId, endChainWorker);
       endChainWorker.on('message', resolve);
       endChainWorker.on('messageerror', reject);
+      endChainWorker.on('close', () => this._workers.delete(endChainWorker.threadId))
     });
   }
 
   const _createStartChainWorker = (corpus, word) => {
     return new Promise((resolve, reject) => {
-      const endChainWorker = new Worker(`${__dirname}/Workers.js`, {
+      const startChainWorker = new Worker(`${__dirname}/Workers.js`, {
         workerData: {
           corpus,
           job: JOBS.CHOOSE_RANDOM_PREV_WORD,
@@ -229,8 +261,10 @@ module.exports.MarkovChain = function(size = 1) {
           }
         }
       });
-      endChainWorker.on('message', resolve);
-      endChainWorker.on('messageerror', reject);
+      this._workers.set(startChainWorker.threadId, startChainWorker);
+      startChainWorker.on('message', resolve);
+      startChainWorker.on('messageerror', reject);
+      startChainWorker.on('exit', () => this._workers.delete(startChainWorker.threadId))
     });
   }
 
