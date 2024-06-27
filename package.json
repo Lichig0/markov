@@ -3,6 +3,10 @@
   "version": "0.0.4",
   "description": "Flexible Markov-like Chains strings using a simple graph data structure",
   "main": "src/Markov.js",
+  "exports":{
+    "./Markov": "./src/Markov.js",
+    "./Tokenizer": "./src/Tokenizer.js"
+  },
   "scripts": {
     "test": "npx jest",
     "example": "node ./test/example.js",
