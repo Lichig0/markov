@@ -70,3 +70,5 @@ module.exports.groupTokens = function(tokens) {
   });
   return groups;
 }
+
+module.exports.REGEX_GROUPS = REGEX_PARTS;
