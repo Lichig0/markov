@@ -9,7 +9,12 @@ const JOBS = {
 const __END__ = 1;
 const __START__ = 0;
 
-const _generateStentnce = async (corpus, options) => {
+// WIP
+const _generateStentnce = async (corpus, input) => {
+    const chainWorkers = [
+        _createStartChainWorker(corpus, input),
+        _createEndChainWorker(corpus, input)
+      ];
     try {
         const [startChain, endChain] = await Promise.all(chainWorkers)
         sentence = _removeOverlap(startChain.list.concat(input).concat(endChain.list)).join(' ');
