@@ -1,4 +1,5 @@
 const REGEX_PARTS = {
+  DISCORD_EMOJI_TAG: /(?<emojiID>(<:[a-zA-Z0-9_]{2,}:){1}([0-9]{18})>)/,
   DISCORD_USER_TAG: /(?<userID>(<@){1}([0-9]{18})>)/,
   DISCORD_CHANNEL_TAG: /(?<channelID>(<#){1}([0-9]{18})>)/,
   URL: /(?<url>(https*:\/\/){0,1}[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&\/\/=]*)?)/,
